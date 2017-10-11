@@ -1,19 +1,21 @@
+#include "strace.h"
+
 int		usage(char *str)
 {
 	printf("usage %s <binary>\n", str);
 	return (-1);
 }
 
-int		exec_child(char **argv)
+void	exec_child(char **argv)
 {
-	const char *args[] = {NULL};
+	char * const args[] = {NULL};
 
-	(void)argv;
+    (void)argv;
 	ptrace(PTRACE_TRACEME, 0, NULL, NULL);
-	return execv(argv[1], args)
+	execv("./a.out", args);
 }
 
-int		exec_parent()
+void	exec_parent(pid_t pid)
 {
 	unsigned int			old = 0;
 	int						status;
@@ -22,35 +24,41 @@ int		exec_parent()
 	wait(&status);
 	while (1)
 	{
-		ptrace(PTRACE_GETREGS, child, NULL, &regs);
+		ptrace(PTRACE_GETREGS, pid, NULL, &regs);
 		if (old != regs.rip)
 		{
 			printf("rip : 0x%llx\n", regs.rip);
 			old = regs.rip;
 		}
-		ptrace(PTRACE_SINGLESTEP, child, NULL, NULL);
-		waitpid(child, &status, 0);
+		ptrace(PTRACE_SINGLESTEP, pid, NULL, NULL);
+		waitpid(pid, &status, 0);
 		if (WIFEXITED(status))
 			break ;
 	}
-	return (0);
 }
 
-int		main(void)
+int		main(int ac, char **av)
 {
 	pid_t		pid;
 
 	if (ac < 2)
-		return (usage);
+		return (usage(av[0]));
 	pid = fork();
+    printf("fork\n");
 	if (pid == -1)
 	{
 		perror("fork");
 		return (-1);
 	}
 	else if (pid == 0)
-		return exec_child();
+    {
+        printf("child\n");
+		exec_child(av+1);
+    }
 	else
-		return exec_parent();
+    {
+        printf("parent\n");
+		exec_parent(pid);
+    }
 	return (0);
 }
