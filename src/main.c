@@ -6,6 +6,21 @@ int		usage(char *str)
 	return (-1);
 }
 
+int     wait_for_syscall(pid_t pid)
+{
+    int status;
+    while (1)
+    {
+        ptrace(PTRACE_SYSCALL, pid, NULL, 0);
+        waitpid(pid, &status, 0);
+        if (WIFSTOPPED(status) && WSTOPSIG(status) & 0x80)
+            return (0);
+        if (WIFEXITED(status))
+            return (1);
+    }
+    return (1);
+}
+
 void	exec_child(char **argv)
 {
 	char * const args[] = {NULL};
@@ -17,23 +32,22 @@ void	exec_child(char **argv)
 
 void	exec_parent(pid_t pid)
 {
-	unsigned int			old = 0;
 	int						status;
-	struct user_regs_struct	regs;
+	int						syscall;
+	int						retval;
 
-	wait(&status);
+    waitpid(pid, &status, 0);
+    ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_TRACESYSGOOD);
 	while (1)
 	{
-		ptrace(PTRACE_GETREGS, pid, NULL, &regs);
-		if (old != regs.rip)
-		{
-			printf("rip : 0x%llx\n", regs.rip);
-			old = regs.rip;
-		}
-		ptrace(PTRACE_SINGLESTEP, pid, NULL, NULL);
-		waitpid(pid, &status, 0);
-		if (WIFEXITED(status))
-			break ;
+        if (wait_for_syscall(pid) != 0)
+            break ;
+        syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_RAX);
+        printf("syscall(%d) = ", syscall);
+        if (wait_for_syscall(pid) != 0)
+            break ;
+        retval = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_RAX);
+        printf("%d\n", retval);
 	}
 }
 
